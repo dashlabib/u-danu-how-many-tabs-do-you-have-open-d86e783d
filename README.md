@@ -8,14 +8,12 @@ One number, digits only: 137 tabs open — high enough to surprise, low enough t
 
 ## How it works
 
-1. `entry_path()` locates `entry.txt` next to `main.py`, wherever the repo is checked out.
-2. `load_raw()` reads that file as raw bytes, so nothing is ever re-encoded or re-wrapped.
-3. `decode()` decodes the bytes as UTF-8 with nothing stripped: a one-number entry carries no trailing newline, so the file is the number and nothing else, and any whitespace in it is rejected.
-4. `load_entry()` returns the file as an `Entry` — raw bytes plus decoded text kept as one pair, so no caller can validate one file and publish another.
-5. `gate_violations()` composes two checks: `shape_violations()` (the sealed scorer's rules — empty or whitespace-only text, length outside 1–5 characters, any space, control characters) and `count_violations()` (digits only, at least 1, and no more than 999, so the number reads as an honest count rather than a figure picked to shock). `count_profile()` measures the count's value and magnitude band — modest, hoarder, or extreme — for the success messages. `validate()` refuses the entry with every violation named.
-6. `resolve_output_dir()` picks the destination — `--output-dir`, else `$MAKEFUN_OUTPUT_DIR`, else `/output` — treating a blank env var as unset.
-7. `publish()` stages the raw bytes with `stage()` (write a temp file beside the final path, read it back, compare), commits them with `commit_staged()` (`os.replace`, then read the published file back and compare once more), and removes any stale temp file in a `finally` block. The published file is therefore byte-identical to `entry.txt` — three bytes, no trailing newline — and a failed write can never leave a half-written entry behind.
-8. `describe()` summarises the entry as characters, bytes, count and magnitude band, and `run()` holds the whole flow so it can be driven in-process (`run(["--verify-only"])`) as well as from the command line via `main()`.
+1. `Entry.load()` reads `entry.txt` next to `main.py`, wherever the repo is checked out, and returns a frozen dataclass pairing the raw bytes with the decoded text, so no caller can validate one file and publish another. Decoding strips nothing: a one-number entry carries no trailing newline, so the file is the number and nothing else, and any whitespace in it is rejected.
+2. The gate is a registry of small rule functions (`RULES`): `rule_length` (1–5 characters), `rule_no_space`, `rule_no_controls`, and `rule_believable` (digits only, at least 1, and no more than 999, so the number reads as an honest count rather than a figure picked to shock). `measure()` counts the value and magnitude band — modest, hoarder, or extreme — for the success messages. Each rule returns one violation message or `None`.
+3. `evaluate()` runs the registry and collects every violation at once — `rule_not_empty` short-circuits it for an empty or whitespace-only entry — and `run()` refuses the entry with all of them named.
+4. `pick_output_dir()` picks the destination — `--output-dir`, else `$MAKEFUN_OUTPUT_DIR`, else `/output`.
+5. `publish()` stages the raw bytes in a temporary file beside the final path, checks the staged copy by SHA-256 (`digest()`), and moves it into place with `os.replace` only when the digest matches; it then reads the published file back and compares it byte for byte and by digest. The published file is therefore byte-identical to `entry.txt` — three bytes, no trailing newline — and a failed write can never leave a half-written entry behind.
+6. `summary()` reports the entry as characters, bytes, count and magnitude band, and `run()` holds the whole flow so it can be driven in-process as well as from the command line via `main()`.
 
 Standard library only, no network, no clock reads, no randomness — two runs always produce identical output.
 
